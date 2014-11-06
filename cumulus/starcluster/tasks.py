@@ -7,6 +7,7 @@ Created on Oct 23, 2014
 from cumulus.starcluster.logging import StarClusterLogHandler, StarClusterCallWriteHandler, logstdout, StarClusterLogFilter
 import cumulus.starcluster.logging
 from cumulus.celeryconfig import app
+from cumulus import config
 import cumulus.girderclient
 import starcluster.config
 import starcluster.logger
@@ -22,6 +23,21 @@ import re
 import inspect
 import time
 import traceback
+
+
+def _authenticate(base_url, username, password):
+    authResponse = requests.get('%s/user/authentication' % base_url,
+                                auth=(username, password))
+
+    return authResponse.json()['authToken']['token']
+
+_token = None
+
+def _girder_token():
+    if not _token:
+        _token = _authenticate(config.baseUrl, config.user, config.password)
+
+    return _token
 
 def _write_config_file(girder_token, config_url):
         headers = {'Girder-Token':  girder_token}
