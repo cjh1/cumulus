@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 ###############################################################################
-#  Copyright 2015 Kitware Inc.
+#  Copyright 2016 Kitware Inc.
 #
 #  Licensed under the Apache License, Version 2.0 ( the "License" );
 #  you may not use this file except in compliance with the License.
@@ -17,8 +17,21 @@
 #  limitations under the License.
 ###############################################################################
 
-from .task import Task
+import importlib
+
+def load_class(class_name):
+    module, cls = class_name.rsplit('.', 1)
+    print module
+    try:
+        imported = importlib.import_module(module)
+    except ImportError:
+        raise
+
+    try:
+        constructor = getattr(imported, cls)
+    except AttributeError:
+        raise
+
+    return constructor
 
 
-def load(info):
-    info['apiRoot'].tasks = Task()
