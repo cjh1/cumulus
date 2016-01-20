@@ -16,12 +16,35 @@ class TaskState:
     ERROR = 'error'
     COMPLETE = 'complete'
 
+# This pretty horrid, revist
+def _extract_taskflow(args):
+    taskflow = None
+
+    for a in args:
+        if isinstance(a, dict) and '_is_taskflow' in a:
+            taskflow = a
+
+    return taskflow
+
+def _extract_and_patch_args(args):
+    taskflow = _extract_taskflow(args)
+    if not taskflow:
+        return (taskflow, args)
+
+    args_list = list(args)
+    args_list.remove(taskflow)
+    args = tuple(args_list)
+
+    return (taskflow, args)
 
 def task(func):
 
     # First apply our own wrapper
     @wraps(func)
-    def wrapped(celery_task, taskflow, *args, **kwargs):
+    def wrapped(celery_task, *args, **kwargs):
+
+        taskflow, args = _extract_and_patch_args(args)
+
         # Convert possible serialized taskflow_runner object
         taskflow = to_taskflow(taskflow)
 
@@ -61,6 +84,9 @@ class TaskFlow(dict):
                 girder_token=girder_token,
                 id=id)
 
+        # This feels pretty dirty!
+        self['_is_taskflow'] = True
+
     @property
     def id(self):
         return self['id']
@@ -86,16 +112,20 @@ class TaskFlow(dict):
     def run(self):
         self.start()
 
-
 @before_task_publish.connect
 def task_before_sent_handler(headers=None, body=None, **kwargs):
-    # Extract the taskflow_runner dict from the args
-    taskflow = body['args'][0]
+    # Extract the taskflow dict from the args
+    if body['task'] == 'celery.chord_unlock':
+        _, callback = body['args'][:2]
+        taskflow = _extract_taskflow(callback.args)
+    else:
+        taskflow = _extract_taskflow(body['args'])
+
     taskflow_id = taskflow['id']
 
     girder_token = taskflow['girder_token']
     girder_api_url = taskflow['girder_api_url']
-    # Create a new taskflow_runner task
+
     # Create a task instance
     client = GirderClient(apiUrl=girder_api_url)
     client.token = girder_token
@@ -137,9 +167,13 @@ def _update_task_status(girder_token, girder_api_url, task_id, status):
     }
     client.patch(url, data=json.dumps(body))
 
-
 @task_failure.connect
 def task_failure_handler(task_id=None, exception=None, args=None, kwargs=None, traceback=None, einfo=None, **extra):
+
+    taskflow, _ = _extract_and_patch_args(args)
+    if not taskflow:
+        return
+
     taskflow = to_taskflow(args[0])
     # First get the taskflow_runner task_id
     taskflow_task_id = _celery_id_to_taskflow_id(taskflow, task_id)
@@ -153,14 +187,22 @@ def task_failure_handler(task_id=None, exception=None, args=None, kwargs=None, t
 # Here we use postrun instead of on success as we need original task
 @task_postrun.connect
 def task_success_handler(task=None, state=None, args=None, **kwargs):
+    if task.name == 'celery.chord_unlock':
+        _, callback = args[:2]
+        taskflow = _extract_taskflow(callback['args'])
+    else:
+        taskflow = _extract_taskflow(args)
 
     if state != celery.states.SUCCESS:
         return
 
     # First get the taskflow_runner task_id from the celery task headers
+
+    if 'taskflow_task_id' not in task.request.headers:
+        return
+
     taskflow_task_id = task.request.headers['taskflow_task_id']
     # Now update the status
-    taskflow = args[0]
     girder_token = taskflow['girder_token']
     girder_api_url = taskflow['girder_api_url']
     _update_task_status(

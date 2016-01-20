@@ -23,13 +23,13 @@ def main(config):
         status = None
         status_url = url = 'taskflows/%s/status' % (taskflow_id)
         tasks_url = url = 'taskflows/%s/tasks' % (taskflow_id)
-        while status != 'complete':
+        while True: #status != 'complete':
             r = client.get(status_url)
             status = r['status']
-            print('Taskflow status:s %s' % status)
+            print('Taskflow status: %s' % status)
             r = client.get(tasks_url)
             print('Tasks in flow: %d' % len(r))
-            time.sleep(1)
+            time.sleep(0.2)
     except HttpError as ex:
         print ex.responseText
 if __name__ == '__main__':

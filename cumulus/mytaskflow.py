@@ -4,7 +4,8 @@ import time
 
 from cumulus import taskflow
 from functools import wraps
-from celery import group
+from celery import group, chord
+
 
 class MyTaskFlow(taskflow.TaskFlow):
     # State methods
@@ -40,14 +41,17 @@ def task3(workflow, *args, **kwargs):
     #header = [task5.s(workflow) for i in range(10)]
     #taskflow.chord(header)(task6.s(workflow))
 
+    #for i in range(0, 10):
     task4.delay(workflow)
 
 @taskflow.task
 def task4(workflow, *args, **kwargs):
     #raise Exception('task4')
-    print 'task5'
+    print 'task4'
     time.sleep(2)
-#     pass
+
+    header = [task5.s(workflow) for i in range(10)]
+    chord(header)(task6.s(workflow))
 
 
 @taskflow.task
@@ -55,7 +59,7 @@ def task5(workflow, *args, **kwargs):
     print 'task5'
 
 @taskflow.task
-def task6(chord_result, workflow, *args, **kwargs):
+def task6(workflow, chord_result, *args, **kwargs):
     print 'task6 and done'
 
 
